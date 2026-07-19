@@ -1,0 +1,57 @@
+# Spots — production deployment (VPS / home server with a domain).
+# 1. cp .env.example .env   and set DOMAIN + POSTGRES_PASSWORD
+# 2. docker compose up -d
+# Caddy obtains Let's Encrypt certificates automatically.
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://spots:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/spots
+      # JWT_SECRET: optional — auto-generated and persisted in the photos volume if unset
+    volumes:
+      - photos:/data/photos
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: spots
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: spots
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U spots -d spots']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  photos:
+  pgdata:
+  caddy_data:
+  caddy_config:

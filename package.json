@@ -1,0 +1,18 @@
+{
+  "name": "spots",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Spots — record and revisit mushroom finding spots. Offline-first PWA + self-hosted sync server.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "pnpm -r --workspace-concurrency=1 build",
+    "check": "pnpm -r check",
+    "test": "pnpm -r test",
+    "dev:server": "pnpm --filter @spots/server dev",
+    "dev:app": "pnpm --filter @spots/app dev"
+  }
+}

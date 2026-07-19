@@ -1,0 +1,40 @@
+# Spots — LAN / local deployment WITHOUT a domain or HTTPS.
+#   docker compose -f docker-compose.local.yml up -d
+# Serves plain HTTP on port 8080.
+#
+# NOTE: browsers only expose geolocation/camera to "secure contexts".
+# http://localhost:8080 counts as secure; http://<LAN-IP>:8080 does NOT —
+# for phones on your LAN, either use the Caddy setup with a real domain, or
+# add your server's origin to chrome://flags/#unsafely-treat-insecure-origin-as-secure.
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      DATABASE_URL: postgres://spots:${POSTGRES_PASSWORD:-spots}@postgres:5432/spots
+    volumes:
+      - photos:/data/photos
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: spots
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spots}
+      POSTGRES_DB: spots
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U spots -d spots']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  photos:
+  pgdata:

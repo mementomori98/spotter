@@ -1,0 +1,247 @@
+/* Spots design system — single light theme, high contrast for outdoor use,
+   big touch targets for field conditions. */
+
+:root {
+  --green: #2e7d32;
+  --green-dark: #1b5e20;
+  --green-soft: #e4efe4;
+  --paper: #faf8f4;
+  --card: #ffffff;
+  --ink: #16211a;
+  --ink-soft: #52605a;
+  --line: #d9d5cc;
+  --danger: #b3261e;
+  --danger-soft: #fbeae9;
+  --amber: #9a6a00;
+  --amber-soft: #fff3d6;
+  --shadow: 0 2px 10px rgba(20, 30, 20, 0.14);
+  --radius: 14px;
+  --tap: 56px; /* min touch target on field screens */
+  --nav-h: calc(64px + env(safe-area-inset-bottom, 0px));
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.45;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* ---------- shared primitives ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--green);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn:disabled {
+  background: #a8b8a8;
+  cursor: default;
+}
+.btn.secondary {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+.btn.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--green-dark);
+}
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+.field > .label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.input,
+textarea.input {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 17px;
+}
+textarea.input {
+  resize: vertical;
+}
+.input:focus {
+  outline: 3px solid var(--green);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+/* screens with the bottom navigation */
+.page {
+  min-height: 100%;
+  padding: 16px 16px var(--nav-h);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* full-screen pages (forms) */
+.sheet-page {
+  min-height: 100%;
+  padding: 0 16px 120px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 60px;
+  margin: 0 -16px 12px;
+  padding: 4px 8px;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.topbar h1 {
+  font-size: 20px;
+  flex: 1;
+}
+.topbar .iconbtn {
+  flex-shrink: 0;
+}
+
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink);
+}
+.iconbtn:active {
+  background: var(--green-soft);
+}
+
+.empty {
+  text-align: center;
+  color: var(--ink-soft);
+  padding: 48px 24px;
+}
+.empty .big {
+  font-size: 44px;
+  margin-bottom: 8px;
+}
+
+.savebar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(transparent, var(--paper) 30%);
+  max-width: 720px;
+  margin: 0 auto;
+}
+.savebar .btn {
+  flex: 1;
+}
+
+.note {
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.warn-banner {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}

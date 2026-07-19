@@ -1,0 +1,30 @@
+{
+  "name": "@spots/server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "files": ["dist", "migrations"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run --pool=forks"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.0",
+    "@node-rs/argon2": "^2.0.2",
+    "@spots/shared": "workspace:*",
+    "fastify": "^5.10.0",
+    "jose": "^6.2.3",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

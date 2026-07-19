@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.svelte-kit/
+*.log
+.env
+.DS_Store
+/server/data/
+/server/photos-dev/
+coverage/
+.pg-test/
