@@ -41,6 +41,7 @@ class BootState {
 
     this.settings = { ...DEFAULT_SETTINGS, ...((await getMeta<Partial<Settings>>('settings')) ?? {}) };
     await this.pushSettingsToSw();
+    await (await import('./ui.svelte')).mapPrefs.load();
 
     await session.load();
     if (!session.current) {

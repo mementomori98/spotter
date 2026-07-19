@@ -133,6 +133,12 @@
   </section>
 
   <section class="card">
+    <h2>Species & plant lists</h2>
+    <p class="note">Fix typos or remove accidentally added names from your selector lists.</p>
+    <a class="btn secondary" href="/vocabulary"><Icon name="edit" size={20} /> Manage lists</a>
+  </section>
+
+  <section class="card">
     <h2>Backup</h2>
     <div class="row">
       <button class="btn secondary" onclick={() => void doExport()} disabled={busyMsg !== null}>

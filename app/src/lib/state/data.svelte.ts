@@ -292,6 +292,28 @@ class DataState {
     return out.sort((a, b) => a.data.name.localeCompare(b.data.name));
   }
 
+  /** How many live spots reference this vocabulary item (species or plant). */
+  itemUsageCount(itemId: string): number {
+    let count = 0;
+    for (const s of this.liveSpots()) {
+      const h = s.data.habitat;
+      if (
+        s.data.speciesId === itemId ||
+        h.indicatorSpeciesIds.includes(itemId) ||
+        h.surroundingPlantIds.includes(itemId) ||
+        h.hostTrees.some((t) => t.plantId === itemId)
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /** Delete a vocabulary item (only offered by the UI when nothing references it). */
+  async deleteListItem(itemId: string): Promise<void> {
+    await this.tombstone([itemId]);
+  }
+
   itemName(id: string | null | undefined): string {
     if (!id) return '';
     const e = this.entities.get(id) as ListItemEntity | undefined;

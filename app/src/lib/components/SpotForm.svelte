@@ -11,6 +11,7 @@
   import { boot } from '$lib/state/boot.svelte';
   import { data } from '$lib/state/data.svelte';
   import { toasts } from '$lib/state/toasts.svelte';
+  import { mapPrefs } from '$lib/state/ui.svelte';
   import { delMeta, getMeta, setMeta } from '$lib/storage/meta';
   import type { SpotDraft } from '$lib/storage/types';
   import { fromDatetimeLocal, toDatetimeLocal } from '$lib/util/format';
@@ -83,29 +84,42 @@
 
   let draft = $state<SpotDraft>(blankDraft());
   let restored = $state(false);
+  /**
+   * New spots start on a FULL-SCREEN map: confirm the exact location first
+   * (nearby existing spots are shown to help micro-position when GPS is
+   * vague under canopy), then fill in the rest of the form.
+   */
+  let locating = $state(!editing);
   let speciesOpen = $state(false);
   let hostTreeOpen = $state(false);
   let plantsOpen = $state(false);
   let indicatorsOpen = $state(false);
   let saving = $state(false);
+  let confirmDiscard = $state(false);
   let mapRef = $state<MapView | null>(null);
 
-  // Restore a persisted draft (the camera app may have killed the PWA), then
-  // auto-open the species selector on brand-new captures: it's the only
-  // required choice -> FAB, tap species, Save = 3 taps total. Only
-  // MEANINGFUL drafts are ever persisted, so a restored draft always gets a
-  // toast, and an abandoned pristine form can never suppress the auto-open
-  // or resurrect a stale timestamp.
+  // Existing spots as context pins on the location map (all of them —
+  // seeing your own cluster helps place the new find precisely).
+  const contextPins = $derived(
+    data
+      .liveSpots()
+      .filter((s) => s.id !== spot?.id)
+      .map((s) => ({ id: s.id, lat: s.data.lat, lng: s.data.lng, rating: s.data.rating ?? null }))
+  );
+
+  // Restore a persisted draft (the camera app may have killed the PWA).
+  // Only MEANINGFUL drafts are persisted, so a restored draft always gets a
+  // toast; it skips straight to the form (its location was already set).
   $effect(() => {
     void (async () => {
       const saved = await getMeta<SpotDraft>(draftKey);
       if (saved && isMeaningful(saved)) {
         draft = { ...blankDraft(), ...saved };
+        locating = false;
         toasts.show('Restored your unsaved entry.');
         if (!editing && !draft.speciesId) speciesOpen = true;
-      } else {
-        if (saved) await delMeta(draftKey);
-        if (!editing) speciesOpen = true;
+      } else if (saved) {
+        await delMeta(draftKey);
       }
       restored = true;
     })();
@@ -125,33 +139,55 @@
     }, 300);
   });
 
-  // GPS live-lock: pin follows fixes until the user adjusts the map.
-  // (zoom is left alone so pinch-zooming the minimap isn't snapped back)
+  // GPS live-lock: pin follows fixes until the user adjusts the map OR
+  // confirms the location (confirm freezes the pin — walking away while
+  // filling the form must not drag the pin along).
   $effect(() => {
     if (!restored || draft.pinAdjusted || !location.hasFix) return;
+    const firstFix = draft.lat === null;
     draft.lat = location.lat;
     draft.lng = location.lng;
     draft.accuracy = location.accuracy ?? undefined;
-    untrack(() => mapRef?.jumpTo(location.lat!, location.lng!));
+    // First fix zooms in close (map may sit at the low-zoom fallback).
+    untrack(() => mapRef?.jumpTo(location.lat!, location.lng!, firstFix ? 17 : undefined));
   });
 
   const accuracyText = $derived(
     draft.pinAdjusted
-      ? 'Pin set manually'
+      ? 'Pin fixed'
       : draft.accuracy !== undefined
         ? `GPS ±${Math.round(draft.accuracy)} m`
         : location.error ?? 'Waiting for GPS…'
   );
   const accuracyWarn = $derived(!draft.pinAdjusted && (draft.accuracy === undefined || draft.accuracy > 25));
 
-  const canSave = $derived(draft.speciesId !== null && draft.lat !== null && draft.lng !== null);
+  const hasLocation = $derived(draft.lat !== null && draft.lng !== null);
+  const canSave = $derived(draft.speciesId !== null && hasLocation);
   const saveHint = $derived(
     draft.speciesId === null
       ? 'Choose a species to save'
-      : draft.lat === null
-        ? 'Waiting for GPS — or drag the map to set the pin'
+      : !hasLocation
+        ? 'Set the location first'
         : null
   );
+
+  function confirmLocation(): void {
+    draft.pinAdjusted = true; // freeze — GPS must not move a confirmed pin
+    locating = false;
+    // The only remaining required choice — open it immediately.
+    if (!editing && !draft.speciesId) speciesOpen = true;
+  }
+
+  function onMapPan(): void {
+    draft.pinAdjusted = true;
+  }
+
+  function onMapMove(view: { lat: number; lng: number }): void {
+    if (draft.pinAdjusted) {
+      draft.lat = view.lat;
+      draft.lng = view.lng;
+    }
+  }
 
   async function save(): Promise<void> {
     if (!canSave || saving) return;
@@ -161,7 +197,6 @@
       const habitatPhotoIds = await commitDraftPhotos(draft.habitatPhotos);
 
       if (editing && spot) {
-        // Tombstone photos the user removed during this edit.
         const kept = new Set([...photoIds, ...habitatPhotoIds]);
         const removed = [...spot.data.photoIds, ...spot.data.habitatPhotoIds].filter((id) => !kept.has(id));
         if (removed.length > 0) await data.removePhotos(removed);
@@ -196,207 +231,231 @@
     }
   }
 
-  /**
-   * Back = leave without saving. The draft is discarded (a kept draft would
-   * resurrect stale data on the next capture); drafts exist to survive
-   * process kills (camera app), not explicit navigation away. Meaningful
-   * entries get a confirmation first.
-   */
+  /** Back = leave without saving (drafts survive process kills, not explicit exits). */
   async function cancel(): Promise<void> {
-    if (persistTimer) clearTimeout(persistTimer); // a late debounce must not resurrect the draft
+    if (persistTimer) clearTimeout(persistTimer);
     await discardDraftPhotos([...draft.photos, ...draft.habitatPhotos]);
     await delMeta(draftKey);
-    history.back();
+    // Deep-linked PWA start has no history to go back to.
+    if (history.length > 1) history.back();
+    else await goto('/', { replaceState: true });
   }
 
-  let confirmDiscard = $state(false);
   function onBack(): void {
     if (!editing && isMeaningful(draft)) confirmDiscard = true;
-    else void cancel(); // safe in edit mode too: discardDraftPhotos never touches committed blobs
+    else void cancel();
   }
 
-  function onMapPan(): void {
-    draft.pinAdjusted = true;
-  }
-
-  function onMapMove(view: { lat: number; lng: number }): void {
-    if (draft.pinAdjusted) {
-      draft.lat = view.lat;
-      draft.lng = view.lng;
-    }
+  /** Back from the location screen: to the form if it has content, else exit. */
+  function locateBack(): void {
+    if (isMeaningful(draft)) locating = false;
+    else onBack();
   }
 </script>
 
-<div class="topbar">
-  <button class="iconbtn" aria-label="Back" onclick={onBack}><Icon name="back" /></button>
-  <h1>{editing ? 'Edit spot' : 'New spot'}</h1>
-</div>
-
-<!-- Location: drag the map under the fixed crosshair (easier than dragging a pin) -->
-<div class="field">
-  <span class="label">Location</span>
-  <div class="minimap">
+{#if locating}
+  <!-- STEP 1 — full-screen location confirmation -->
+  <div class="locate">
     <MapView
       bind:this={mapRef}
       interactive={true}
       showUser={true}
-      center={draft.lat !== null ? { lat: draft.lat, lng: draft.lng!, zoom: 16 } : null}
+      spots={contextPins}
+      satellite={mapPrefs.satellite}
+      center={draft.lat !== null ? { lat: draft.lat, lng: draft.lng!, zoom: 17 } : null}
       onUserPan={onMapPan}
       onMove={onMapMove}
     />
-    <div class="crosshair" aria-hidden="true">
-      <div class="pin">📍</div>
-    </div>
-    <div class="acc" class:warn={accuracyWarn}>{accuracyText}</div>
-    {#if draft.pinAdjusted}
+    <div class="crosshair" aria-hidden="true"><div class="pin">📍</div></div>
+
+    <div class="l-top">
+      <button class="mapbtn" aria-label="Back" onclick={locateBack}><Icon name="back" /></button>
+      <div class="acc" class:warn={accuracyWarn}>{accuracyText}</div>
       <button
-        class="chip relock"
-        onclick={() => {
-          draft.pinAdjusted = false;
-        }}>Follow GPS</button
+        class="mapbtn"
+        aria-label={mapPrefs.satellite ? 'Map view' : 'Satellite view'}
+        onclick={() => mapPrefs.toggle()}
       >
+        <Icon name={mapPrefs.satellite ? 'map' : 'globe'} />
+      </button>
+    </div>
+
+    {#if draft.pinAdjusted}
+      <button class="relock chip" onclick={() => (draft.pinAdjusted = false)}>Follow GPS</button>
     {/if}
+
+    <div class="l-bottom">
+      {#if hasLocation}
+        <p class="coords">{draft.lat!.toFixed(6)}, {draft.lng!.toFixed(6)}</p>
+      {/if}
+      <button class="btn confirm" onclick={confirmLocation} disabled={!hasLocation}>
+        {hasLocation ? '✓ This is the place' : 'Waiting for GPS — or drag the map'}
+      </button>
+      <p class="note center">Drag the map to fine-tune the pin. Your other spots are shown too.</p>
+    </div>
   </div>
-  {#if draft.lat !== null}
-    <p class="note coords">{draft.lat.toFixed(6)}, {draft.lng?.toFixed(6)}</p>
-  {/if}
-</div>
-
-<div class="field">
-  <span class="label">Species <em>required</em></span>
-  <button class="input choose" class:placeholder={!draft.speciesId} onclick={() => (speciesOpen = true)}>
-    {draft.speciesId ? data.itemName(draft.speciesId) : 'Choose species…'}
-  </button>
-</div>
-
-<div class="field">
-  <span class="label">Rating — how good is this spot?</span>
-  <RatingPicker value={draft.rating} onChange={(r) => (draft.rating = r)} />
-</div>
-
-<div class="field">
-  <span class="label">Found</span>
-  <input
-    class="input"
-    type="datetime-local"
-    value={toDatetimeLocal(draft.foundAt)}
-    onchange={(e) => (draft.foundAt = fromDatetimeLocal(e.currentTarget.value))}
-  />
-</div>
-
-<div class="field">
-  <span class="label">Photos of the mushroom</span>
-  <PhotoPicker bind:photos={draft.photos} label="Mushroom photo" />
-</div>
-
-<div class="field">
-  <span class="label">Notes</span>
-  <textarea class="input" rows="3" maxlength="10000" bind:value={draft.notes} placeholder="Anything worth remembering…"></textarea>
-</div>
-
-{#if !draft.habitatOpen}
-  <button class="btn secondary wide" onclick={() => (draft.habitatOpen = true)}>
-    <Icon name="plus" size={20} /> Add habitat details
-  </button>
 {:else}
-  <h2 class="habitat-h">Habitat</h2>
+  <!-- STEP 2 — the rest of the form -->
+  <div class="topbar">
+    <button class="iconbtn" aria-label="Back" onclick={onBack}><Icon name="back" /></button>
+    <h1>{editing ? 'Edit spot' : 'New spot'}</h1>
+  </div>
 
   <div class="field">
-    <span class="label">Host trees / plants</span>
-    {#each draft.hostTrees as tree, i (tree.plantId)}
-      <div class="treerow card">
-        <span class="name">{data.itemName(tree.plantId)}</span>
-        <label class="age">
-          age
-          <input
-            type="number"
-            class="input small"
-            min="0"
-            placeholder="min"
-            value={tree.ageMin ?? ''}
-            oninput={(e) => (draft.hostTrees[i]!.ageMin = e.currentTarget.value ? +e.currentTarget.value : undefined)}
-          />
-          –
-          <input
-            type="number"
-            class="input small"
-            min="0"
-            placeholder="max"
-            value={tree.ageMax ?? ''}
-            oninput={(e) => (draft.hostTrees[i]!.ageMax = e.currentTarget.value ? +e.currentTarget.value : undefined)}
-          />
-          y
-        </label>
-        <button
-          class="iconbtn"
-          aria-label="Remove tree"
-          onclick={() => (draft.hostTrees = draft.hostTrees.filter((t) => t.plantId !== tree.plantId))}
-        >
-          <Icon name="x" size={20} />
-        </button>
-      </div>
-    {/each}
-    <button class="btn secondary wide" onclick={() => (hostTreeOpen = true)}>
-      <Icon name="plus" size={20} /> Add host tree
+    <span class="label">Location</span>
+    <button class="preview" onclick={() => (locating = true)} aria-label="Adjust location">
+      {#if hasLocation}
+        <MapView
+          interactive={false}
+          showUser={false}
+          satellite={mapPrefs.satellite}
+          center={{ lat: draft.lat!, lng: draft.lng!, zoom: 16 }}
+          marker={{ lat: draft.lat!, lng: draft.lng! }}
+        />
+      {/if}
+      <span class="adjust chip"><Icon name="crosshair" size={16} /> Adjust</span>
+    </button>
+    {#if hasLocation}
+      <p class="note coords-line">{draft.lat!.toFixed(6)}, {draft.lng!.toFixed(6)} · {accuracyText}</p>
+    {/if}
+  </div>
+
+  <div class="field">
+    <span class="label">Species <em>required</em></span>
+    <button class="input choose" class:placeholder={!draft.speciesId} onclick={() => (speciesOpen = true)}>
+      {draft.speciesId ? data.itemName(draft.speciesId) : 'Choose species…'}
     </button>
   </div>
 
   <div class="field">
-    <span class="label">Soil</span>
-    <input class="input" maxlength="1000" bind:value={draft.soil} placeholder="e.g. sandy, calcareous, moist…" />
+    <span class="label">Rating — how good is this spot?</span>
+    <RatingPicker value={draft.rating} onChange={(r) => (draft.rating = r)} />
   </div>
 
   <div class="field">
-    <span class="label">Vegetation</span>
-    <input class="input" maxlength="1000" bind:value={draft.vegetation} placeholder="e.g. old beech forest, mossy…" />
+    <span class="label">Found</span>
+    <input
+      class="input"
+      type="datetime-local"
+      value={toDatetimeLocal(draft.foundAt)}
+      onchange={(e) => (draft.foundAt = fromDatetimeLocal(e.currentTarget.value))}
+    />
   </div>
 
   <div class="field">
-    <span class="label">Surrounding plants</span>
-    <div class="chips">
-      {#each draft.surroundingPlantIds as pid (pid)}
-        <button
-          class="chip active"
-          onclick={() => (draft.surroundingPlantIds = draft.surroundingPlantIds.filter((x) => x !== pid))}
-        >
-          {data.itemName(pid)} <Icon name="x" size={16} />
-        </button>
+    <span class="label">Photos of the mushroom</span>
+    <PhotoPicker bind:photos={draft.photos} label="Mushroom photo" />
+  </div>
+
+  <div class="field">
+    <span class="label">Notes</span>
+    <textarea class="input" rows="3" maxlength="10000" bind:value={draft.notes} placeholder="Anything worth remembering…"></textarea>
+  </div>
+
+  {#if !draft.habitatOpen}
+    <button class="btn secondary wide" onclick={() => (draft.habitatOpen = true)}>
+      <Icon name="plus" size={20} /> Add habitat details
+    </button>
+  {:else}
+    <h2 class="habitat-h">Habitat</h2>
+
+    <div class="field">
+      <span class="label">Host trees / plants</span>
+      {#each draft.hostTrees as tree, i (tree.plantId)}
+        <div class="treerow card">
+          <span class="name">{data.itemName(tree.plantId)}</span>
+          <label class="age">
+            age
+            <input
+              type="number"
+              class="input small"
+              min="0"
+              placeholder="min"
+              value={tree.ageMin ?? ''}
+              oninput={(e) => (draft.hostTrees[i]!.ageMin = e.currentTarget.value ? +e.currentTarget.value : undefined)}
+            />
+            –
+            <input
+              type="number"
+              class="input small"
+              min="0"
+              placeholder="max"
+              value={tree.ageMax ?? ''}
+              oninput={(e) => (draft.hostTrees[i]!.ageMax = e.currentTarget.value ? +e.currentTarget.value : undefined)}
+            />
+            y
+          </label>
+          <button
+            class="iconbtn"
+            aria-label="Remove tree"
+            onclick={() => (draft.hostTrees = draft.hostTrees.filter((t) => t.plantId !== tree.plantId))}
+          >
+            <Icon name="x" size={20} />
+          </button>
+        </div>
       {/each}
-      <button class="chip" onclick={() => (plantsOpen = true)}><Icon name="plus" size={16} /> Add</button>
+      <button class="btn secondary wide" onclick={() => (hostTreeOpen = true)}>
+        <Icon name="plus" size={20} /> Add host tree
+      </button>
     </div>
-  </div>
 
-  <div class="field">
-    <span class="label">Indicator mushrooms nearby</span>
-    <div class="chips">
-      {#each draft.indicatorSpeciesIds as sid (sid)}
-        <button
-          class="chip active"
-          onclick={() => (draft.indicatorSpeciesIds = draft.indicatorSpeciesIds.filter((x) => x !== sid))}
-        >
-          {data.itemName(sid)} <Icon name="x" size={16} />
-        </button>
-      {/each}
-      <button class="chip" onclick={() => (indicatorsOpen = true)}><Icon name="plus" size={16} /> Add</button>
+    <div class="field">
+      <span class="label">Soil</span>
+      <input class="input" maxlength="1000" bind:value={draft.soil} placeholder="e.g. sandy, calcareous, moist…" />
     </div>
-  </div>
 
-  <div class="field">
-    <span class="label">Habitat notes</span>
-    <textarea class="input" rows="3" maxlength="5000" bind:value={draft.habitatNotes}></textarea>
-  </div>
+    <div class="field">
+      <span class="label">Vegetation</span>
+      <input class="input" maxlength="1000" bind:value={draft.vegetation} placeholder="e.g. old beech forest, mossy…" />
+    </div>
 
-  <div class="field">
-    <span class="label">Photos of the habitat</span>
-    <PhotoPicker bind:photos={draft.habitatPhotos} label="Habitat photo" />
+    <div class="field">
+      <span class="label">Surrounding plants</span>
+      <div class="chips">
+        {#each draft.surroundingPlantIds as pid (pid)}
+          <button
+            class="chip active"
+            onclick={() => (draft.surroundingPlantIds = draft.surroundingPlantIds.filter((x) => x !== pid))}
+          >
+            {data.itemName(pid)} <Icon name="x" size={16} />
+          </button>
+        {/each}
+        <button class="chip" onclick={() => (plantsOpen = true)}><Icon name="plus" size={16} /> Add</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="label">Indicator mushrooms nearby</span>
+      <div class="chips">
+        {#each draft.indicatorSpeciesIds as sid (sid)}
+          <button
+            class="chip active"
+            onclick={() => (draft.indicatorSpeciesIds = draft.indicatorSpeciesIds.filter((x) => x !== sid))}
+          >
+            {data.itemName(sid)} <Icon name="x" size={16} />
+          </button>
+        {/each}
+        <button class="chip" onclick={() => (indicatorsOpen = true)}><Icon name="plus" size={16} /> Add</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="label">Habitat notes</span>
+      <textarea class="input" rows="3" maxlength="5000" bind:value={draft.habitatNotes}></textarea>
+    </div>
+
+    <div class="field">
+      <span class="label">Photos of the habitat</span>
+      <PhotoPicker bind:photos={draft.habitatPhotos} label="Habitat photo" />
+    </div>
+  {/if}
+
+  <div class="savebar">
+    <button class="btn" onclick={() => void save()} disabled={!canSave || saving || boot.readOnly}>
+      {saving ? 'Saving…' : saveHint ?? (editing ? 'Save changes' : 'Save spot')}
+    </button>
   </div>
 {/if}
-
-<div class="savebar">
-  <button class="btn" onclick={() => void save()} disabled={!canSave || saving || boot.readOnly}>
-    {saving ? 'Saving…' : saveHint ?? (editing ? 'Save changes' : 'Save spot')}
-  </button>
-</div>
 
 <ConfirmDialog
   bind:open={confirmDiscard}
@@ -441,12 +500,12 @@
 />
 
 <style>
-  .minimap {
-    position: relative;
-    height: 260px;
-    border-radius: var(--radius);
-    overflow: hidden;
-    box-shadow: var(--shadow);
+  /* ---- step 1: full-screen locator ---- */
+  .locate {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: var(--paper);
   }
   .crosshair {
     position: absolute;
@@ -457,18 +516,39 @@
     z-index: 5;
   }
   .pin {
-    font-size: 38px;
+    font-size: 44px;
     line-height: 1;
     filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
   }
-  .acc {
+  .l-top {
     position: absolute;
+    top: calc(8px + env(safe-area-inset-top, 0px));
     left: 8px;
-    top: 8px;
-    z-index: 5;
+    right: 8px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .mapbtn {
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: 16px;
+    border: none;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .acc {
     background: var(--card);
     border-radius: 999px;
-    padding: 6px 12px;
+    padding: 8px 14px;
     font-size: 14px;
     font-weight: 700;
     box-shadow: var(--shadow);
@@ -479,16 +559,72 @@
   }
   .relock {
     position: absolute;
-    right: 8px;
-    top: 8px;
-    z-index: 5;
+    right: 10px;
+    top: calc(76px + env(safe-area-inset-top, 0px));
+    z-index: 6;
     background: var(--card);
     box-shadow: var(--shadow);
     border: none;
     font-weight: 700;
     color: var(--green-dark);
   }
+  .l-bottom {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
   .coords {
+    align-self: center;
+    margin: 0;
+    background: var(--card);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    box-shadow: var(--shadow);
+  }
+  .confirm {
+    width: 100%;
+    font-size: 19px;
+  }
+  .center {
+    text-align: center;
+    margin: 0;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  }
+
+  /* ---- step 2: form ---- */
+  .preview {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 160px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    background: var(--green-soft);
+  }
+  .adjust {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 5;
+    background: var(--card);
+    border: none;
+    box-shadow: var(--shadow);
+    font-weight: 700;
+    color: var(--green-dark);
+  }
+  .coords-line {
     margin: 6px 2px 0;
     font-variant-numeric: tabular-nums;
   }

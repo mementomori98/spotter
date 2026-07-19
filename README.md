@@ -31,6 +31,8 @@ phones require HTTPS or localhost).
 **Free hosting at home** (old laptop / Raspberry Pi + free DuckDNS domain): see
 [docs/HOME-SERVER.md](./docs/HOME-SERVER.md).
 
+**Azure free tier** (free VM for 12 months): see [docs/AZURE.md](./docs/AZURE.md).
+
 ## Development
 
 ```sh

@@ -29,7 +29,7 @@
   });
 
   const showNav = $derived(
-    boot.phase === 'ready' && ['/', '/list', '/settings'].includes(page.url.pathname)
+    boot.phase === 'ready' && ['/', '/list', '/settings', '/vocabulary'].includes(page.url.pathname)
   );
 
   function registerServiceWorker(): void {

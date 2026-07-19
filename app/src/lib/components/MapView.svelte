@@ -19,26 +19,12 @@
 
 <script lang="ts">
   import { location } from '$lib/geo/location.svelte';
+  import { spotPinLayers, SPOT_TAP_LAYERS, SPOTS_SOURCE_ID } from '$lib/map/pins';
   import { buildStyle } from '$lib/map/style';
   import { boot } from '$lib/state/boot.svelte';
-  import { RATINGS, RATING_COLORS, RATING_SIZE, UNRATED_COLOR } from '$lib/util/rating';
   import { untrack } from 'svelte';
   import { GeoJSONSource, Map as MlMap, Marker } from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
-
-  // Data-driven pin styling: color + size encode the rating at a glance.
-  const ratingColorExpr = [
-    'match',
-    ['get', 'rating'],
-    ...RATINGS.flatMap((r) => [r, RATING_COLORS[r]]),
-    UNRATED_COLOR
-  ] as unknown as never;
-  const ratingSizeExpr = (zLow: number, zHigh: number) =>
-    [
-      '*',
-      ['interpolate', ['linear'], ['zoom'], 8, zLow, 16, zHigh],
-      ['match', ['get', 'rating'], ...RATINGS.flatMap((r) => [r, RATING_SIZE[r]]), 1]
-    ] as unknown as never;
 
   interface Props {
     spots?: SpotPin[];
@@ -96,38 +82,20 @@
 
     map.on('load', () => {
       loaded = true;
-      map!.addSource('spots', {
+      map!.addSource(SPOTS_SOURCE_ID, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
       // Circles instead of symbols: no glyph server needed => fully offline.
-      map!.addLayer({
-        id: 'spots-halo',
-        type: 'circle',
-        source: 'spots',
-        paint: {
-          'circle-radius': ratingSizeExpr(10, 16),
-          'circle-color': '#ffffff',
-          'circle-opacity': 0.9
-        }
-      });
-      map!.addLayer({
-        id: 'spots-dot',
-        type: 'circle',
-        source: 'spots',
-        paint: {
-          'circle-radius': ratingSizeExpr(7, 12),
-          'circle-color': ratingColorExpr,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2
-        }
-      });
-      map!.on('click', 'spots-dot', (e) => {
-        const id = e.features?.[0]?.properties?.id as string | undefined;
-        if (id) onTapSpot(id);
-      });
-      map!.on('click', 'spots-halo', (e) => {
-        const id = e.features?.[0]?.properties?.id as string | undefined;
+      // Layer specs live in lib/map/pins.ts and are validated against the
+      // MapLibre style spec by a unit test (an invalid expression here
+      // throws and silently kills ALL pins — happened once, never again).
+      for (const layer of spotPinLayers) map!.addLayer(layer);
+      // Single click handler across both pin layers — per-layer handlers
+      // would fire twice when a tap hits the dot AND its halo.
+      map!.on('click', (e) => {
+        const feature = map!.queryRenderedFeatures(e.point, { layers: SPOT_TAP_LAYERS })[0];
+        const id = feature?.properties?.id as string | undefined;
         if (id) onTapSpot(id);
       });
       map!.on('mouseenter', 'spots-dot', () => (map!.getCanvas().style.cursor = 'pointer'));
@@ -172,7 +140,7 @@
   // Spot pins.
   $effect(() => {
     if (!map || !loaded) return;
-    const source = map.getSource<GeoJSONSource>('spots');
+    const source = map.getSource<GeoJSONSource>(SPOTS_SOURCE_ID);
     source?.setData({
       type: 'FeatureCollection',
       features: spots.map((s) => ({

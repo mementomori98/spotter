@@ -9,6 +9,7 @@
   import { boot } from '$lib/state/boot.svelte';
   import { data } from '$lib/state/data.svelte';
   import { toasts } from '$lib/state/toasts.svelte';
+  import { mapPrefs } from '$lib/state/ui.svelte';
   import RatingPicker from '$lib/components/RatingPicker.svelte';
   import { newId } from '$lib/util/ids';
   import { fmtDate, fmtDateTime } from '$lib/util/format';
@@ -162,6 +163,7 @@
       <MapView
         interactive={false}
         showUser={false}
+        satellite={mapPrefs.satellite}
         center={{ lat: spot.data.lat, lng: spot.data.lng, zoom: 15 }}
         marker={{ lat: spot.data.lat, lng: spot.data.lng }}
       />

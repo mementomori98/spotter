@@ -9,9 +9,9 @@
   import { boot } from '$lib/state/boot.svelte';
   import { data } from '$lib/state/data.svelte';
   import { filter } from '$lib/state/filter.svelte';
+  import { mapPrefs } from '$lib/state/ui.svelte';
   import { RATINGS, RATING_COLORS, RATING_SIZE, UNRATED_COLOR } from '$lib/util/rating';
 
-  let satellite = $state(false);
   let follow = $state(true);
   let filterOpen = $state(false);
   let regionOpen = $state(false);
@@ -53,7 +53,7 @@
   <MapView
     bind:this={mapRef}
     spots={pins}
-    {satellite}
+    satellite={mapPrefs.satellite}
     bind:follow
     center={focusSpot ? { lat: focusSpot.data.lat, lng: focusSpot.data.lng, zoom: 16 } : null}
     onTapSpot={(id) => void goto(`/spot/${id}`)}
@@ -68,8 +68,12 @@
   </div>
 
   <div class="stack">
-    <button class="mapbtn" aria-label={satellite ? 'Map view' : 'Satellite view'} onclick={() => (satellite = !satellite)}>
-      <Icon name={satellite ? 'map' : 'globe'} />
+    <button
+      class="mapbtn"
+      aria-label={mapPrefs.satellite ? 'Map view' : 'Satellite view'}
+      onclick={() => mapPrefs.toggle()}
+    >
+      <Icon name={mapPrefs.satellite ? 'map' : 'globe'} />
     </button>
     <button class="mapbtn" aria-label="Download this area for offline" onclick={() => (regionOpen = true)}>
       <Icon name="download" />
@@ -115,7 +119,7 @@
   selected={filter.speciesIds}
   onDone={(ids) => (filter.speciesIds = ids)}
 />
-<RegionDownloadSheet bind:open={regionOpen} {view} {satellite} />
+<RegionDownloadSheet bind:open={regionOpen} {view} satellite={mapPrefs.satellite} />
 
 <style>
   .mapwrap {
