@@ -12,6 +12,7 @@
 
   let query = $state('');
   let filterOpen = $state(false);
+  let tagFilterOpen = $state(false);
 
   const q = $derived(query.trim().toLowerCase());
   const entries = $derived(
@@ -30,7 +31,10 @@
       .sort((a, b) => b.data.foundAt - a.data.foundAt)
   );
 
-  const filterLabel = $derived(filter.active ? `${filter.speciesIds.length} ✓` : 'All');
+  const filterLabel = $derived(filter.speciesIds.length > 0 ? `${filter.speciesIds.length} ✓` : 'All');
+  // Tag chip only exists once the user has created tags (mirrors the map).
+  const hasTags = $derived(data.listItems('tag').length > 0);
+  const tagLabel = $derived(filter.tagIds.length > 0 ? `${filter.tagIds.length} ✓` : 'All');
 
   function distanceTo(lat: number, lng: number): string | null {
     if (!location.hasFix) return null;
@@ -51,11 +55,16 @@
       <Icon name="search" size={20} />
       <input class="input" placeholder="Search species or notes…" bind:value={query} />
     </div>
-    <button class="chip" class:active={filter.active} onclick={() => (filterOpen = true)}>
+    <button class="chip" class:active={filter.speciesIds.length > 0} onclick={() => (filterOpen = true)}>
       🍄 {filterLabel}
     </button>
+    {#if hasTags}
+      <button class="chip" class:active={filter.tagIds.length > 0} onclick={() => (tagFilterOpen = true)}>
+        🏷 {tagLabel}
+      </button>
+    {/if}
     {#if filter.active}
-      <button class="chip" aria-label="Show all species" onclick={() => (filter.speciesIds = [])}>
+      <button class="chip" aria-label="Clear filters" onclick={() => filter.clear()}>
         <Icon name="x" size={16} />
       </button>
     {/if}
@@ -106,6 +115,14 @@
   multi
   selected={filter.speciesIds}
   onDone={(ids) => (filter.speciesIds = ids)}
+/>
+<Selector
+  bind:open={tagFilterOpen}
+  kind="tag"
+  title="Show tags"
+  multi
+  selected={filter.tagIds}
+  onDone={(ids) => (filter.tagIds = ids)}
 />
 
 <style>

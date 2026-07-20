@@ -1,6 +1,6 @@
 <script lang="ts">
   import { data } from '$lib/state/data.svelte';
-  import { newId } from '$lib/util/ids';
+  import type { ListItemData } from '@spots/shared';
   import BottomSheet from './BottomSheet.svelte';
   import Icon from './Icon.svelte';
 
@@ -18,7 +18,7 @@
     onDone
   }: {
     open: boolean;
-    kind: 'species' | 'plant';
+    kind: ListItemData['kind'];
     title: string;
     multi?: boolean;
     selected?: string[];
@@ -48,18 +48,18 @@
       .sort((a, b) => b.data.lastUsedAt - a.data.lastUsedAt)
       .slice(0, 5)
   );
-  const exactMatch = $derived(all.find((i) => i.data.name.toLowerCase() === q));
+  // Match against the FULL vocabulary, not the exclude-filtered list —
+  // otherwise an excluded item's name could be "created" as a duplicate.
+  const exactMatch = $derived(data.findItemByName(kind, query));
 
   async function createItem(): Promise<void> {
-    const name = query.trim();
-    if (!name) return;
-    if (exactMatch) {
-      choose(exactMatch.id);
-      return;
-    }
-    const id = newId();
-    await data.upsert('listItem', id, { kind, name, lastUsedAt: Date.now() });
-    choose(id);
+    // The store snaps to an existing item on a name match — never duplicates.
+    const item = await data.createListItem(kind, query);
+    if (!item) return;
+    // Excluded here (e.g. the spot's own species in the indicator selector):
+    // choosing it would be invalid, the dup note explains why.
+    if (exclude.includes(item.id)) return;
+    choose(item.id);
   }
 
   function choose(id: string): void {
@@ -75,7 +75,9 @@
     for (const id of ids) {
       const item = data.entities.get(id);
       if (item?.data && item.type === 'listItem') {
-        void data.upsert('listItem', id, { ...(item.data as { kind: 'species'; name: string; lastUsedAt: number }), lastUsedAt: Date.now() });
+        // Spread the full payload — a narrower cast would still work at
+        // runtime but lie about (and hide) fields like iconPhotoId/tagIds.
+        void data.upsert('listItem', id, { ...(item.data as ListItemData), lastUsedAt: Date.now() });
       }
     }
     open = false;
@@ -108,7 +110,12 @@
     </button>
   {/if}
   {#if q && exactMatch}
-    <p class="note dup">“{exactMatch.data.name}” is already in your list — tap it below.</p>
+    {#if exclude.includes(exactMatch.id)}
+      <!-- Excluded items aren't listed below, so don't tell people to tap them. -->
+      <p class="note dup">“{exactMatch.data.name}” is already used here.</p>
+    {:else}
+      <p class="note dup">“{exactMatch.data.name}” is already in your list — tap it below.</p>
+    {/if}
   {/if}
 
   {#if !q && recents.length > 0}
@@ -124,7 +131,7 @@
 
   {#if filtered.length === 0 && !q}
     <p class="note" style="padding: 12px 4px">
-      Nothing here yet — type a name above to add your first {kind === 'species' ? 'species' : 'tree or plant'}.
+      Nothing here yet — type a name above to add your first {kind === 'species' ? 'species' : kind === 'plant' ? 'tree or plant' : 'tag'}.
     </p>
   {/if}
 

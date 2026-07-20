@@ -2,15 +2,15 @@
    big touch targets for field conditions. */
 
 :root {
-  /* Action color: "chanterelle orange" — chosen for maximum contrast against
-     green forest/satellite imagery (a green FAB disappears over canopy). */
-  --accent: #d84315;
-  --accent-dark: #bf360c;
-  --accent-soft: #fde6dc;
-  /* Forest green stays as the passive brand color (headings, tints). */
-  --green: #2e7d32;
-  --green-dark: #1b5e20;
-  --green-soft: #e4efe4;
+  /* Action color: deep matte forest green (product decision). White text on it is
+     7.6:1 (AAA). Over green terrain the FAB relies on its white ring + shadow. */
+  --accent: #2f5d3a;
+  --accent-dark: #234a2e;
+  --accent-soft: #e4efe4;
+  /* One green family: brand == action color since the forest-green redesign. */
+  --green: var(--accent);
+  --green-dark: var(--accent-dark);
+  --green-soft: var(--accent-soft);
   --paper: #faf8f4;
   --card: #ffffff;
   --ink: #16211a;

@@ -20,3 +20,16 @@ class MapPrefs {
 }
 
 export const mapPrefs = new MapPrefs();
+
+/**
+ * Main-map camera for THIS session only. Module scope survives route
+ * remounts (map → spot detail → back) but not a reload — a fresh session
+ * re-centers on the user by design, so this is deliberately NOT persisted
+ * to meta.
+ */
+class MapSession {
+  view = $state<{ lat: number; lng: number; zoom: number } | null>(null);
+  follow = $state(true);
+}
+
+export const mapSession = new MapSession();

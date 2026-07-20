@@ -11,12 +11,12 @@ import { RATING_COLORS, UNRATED_COLOR, type Rating } from '$lib/util/rating';
  */
 
 /** Logical (CSS px) marker geometry; rendered at 2x for crisp screens. */
-export const MARKER_W = 56;
-export const MARKER_H = 60;
-export const CIRCLE_D = 38; // dot / icon diameter (+~20% radius per field feedback)
-export const CIRCLE_CENTER_Y = 21; // -> icon-offset [0, -CIRCLE_CENTER_Y] with anchor 'top'
-const BADGE_TOP = 43;
-const BADGE_H = 15;
+export const MARKER_W = 60;
+export const MARKER_H = 65;
+export const CIRCLE_D = 40; // dot / icon diameter (~15% down from 48 per field feedback)
+export const CIRCLE_CENTER_Y = 23; // -> icon-offset [0, -CIRCLE_CENTER_Y] with anchor 'top'; headroom so the ring never clips
+const BADGE_TOP = 47;
+const BADGE_H = 16;
 const SCALE = 2; // pixelRatio
 
 export function markerKey(iconPhotoId: string | null, rating: Rating | null): string {
@@ -38,10 +38,10 @@ function makeCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
 
 function drawBadge(ctx: CanvasRenderingContext2D, rating: Rating): void {
   const text = rating;
-  ctx.font = '800 12px system-ui, sans-serif';
+  ctx.font = '800 13px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const w = Math.max(22, ctx.measureText(text).width + 10);
+  const w = Math.max(24, ctx.measureText(text).width + 10);
   const x = MARKER_W / 2 - w / 2;
   const r = BADGE_H / 2;
   // white pill

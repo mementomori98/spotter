@@ -8,12 +8,14 @@ import {
   type Entity,
   type EntityType,
   type DataByType,
+  type ListItemData,
   type ListItemEntity,
   type PhotoEntity,
   type SpotEntity,
   type VisitEntity
 } from '@spots/shared';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { newId } from '$lib/util/ids';
 import { session } from './session.svelte';
 
 /**
@@ -282,7 +284,7 @@ class DataState {
     return out.sort((a, b) => b.data.at - a.data.at);
   }
 
-  listItems(kind: 'species' | 'plant'): ListItemEntity[] {
+  listItems(kind: ListItemData['kind']): ListItemEntity[] {
     const out: ListItemEntity[] = [];
     for (const e of this.entities.values()) {
       if (e.type === 'listItem' && !e.deleted && e.data && (e as ListItemEntity).data.kind === kind) {
@@ -292,8 +294,15 @@ class DataState {
     return out.sort((a, b) => a.data.name.localeCompare(b.data.name));
   }
 
-  /** How many live spots reference this vocabulary item (species or plant). */
+  /**
+   * How many live records reference this vocabulary item: spots for species
+   * and plants, species for tags.
+   */
   itemUsageCount(itemId: string): number {
+    const item = this.entities.get(itemId) as ListItemEntity | undefined;
+    if (item?.data?.kind === 'tag') {
+      return this.listItems('species').filter((sp) => (sp.data.tagIds ?? []).includes(itemId)).length;
+    }
     let count = 0;
     for (const s of this.liveSpots()) {
       const h = s.data.habitat;
@@ -309,9 +318,129 @@ class DataState {
     return count;
   }
 
-  /** Delete a vocabulary item (only offered by the UI when nothing references it). */
+  /** Case-insensitive, trimmed name lookup within one vocabulary kind. */
+  findItemByName(kind: ListItemData['kind'], name: string): ListItemEntity | undefined {
+    const needle = name.trim().toLowerCase();
+    if (!needle) return undefined;
+    return this.listItems(kind).find((i) => i.data.name.trim().toLowerCase() === needle);
+  }
+
+  /**
+   * Create a vocabulary item — THE anti-duplicate guard: if a name already
+   * exists (case-insensitive, trimmed), snap to the existing item instead of
+   * ever creating a duplicate. Empty names yield undefined.
+   */
+  async createListItem(kind: ListItemData['kind'], rawName: string): Promise<ListItemEntity | undefined> {
+    const name = rawName.trim();
+    if (!name) return undefined;
+    const existing = this.findItemByName(kind, name);
+    if (existing) return existing;
+    return (await this.upsert('listItem', newId(), { kind, name, lastUsedAt: Date.now() })) as ListItemEntity;
+  }
+
+  /**
+   * Rename a vocabulary item. Reads the LIVE entity by id (not a caller
+   * snapshot) so concurrent field edits — e.g. an icon set moments earlier —
+   * are never silently dropped.
+   */
+  async renameListItem(itemId: string, rawName: string): Promise<'ok' | 'duplicate' | 'empty'> {
+    const live = this.entities.get(itemId) as ListItemEntity | undefined;
+    if (!live?.data || live.deleted) return 'empty';
+    const name = rawName.trim();
+    if (!name) return 'empty';
+    const clash = this.findItemByName(live.data.kind, name);
+    if (clash && clash.id !== itemId) return 'duplicate';
+    if (live.data.name === name) return 'ok'; // no-op, don't churn sync
+    await this.upsert('listItem', itemId, { ...live.data, name });
+    return 'ok';
+  }
+
+  /**
+   * Delete a vocabulary item with a kind-specific client-side cascade (the
+   * server is payload-opaque and cannot cascade):
+   * - plant:   stripped from every habitat (host trees + surrounding plants);
+   *            the spots themselves survive.
+   * - species: every spot of that species is fully deleted (visits/photos/
+   *            blobs), then indicator references on surviving spots are
+   *            stripped.
+   * - tag:     stripped from every species carrying it.
+   * Cascades run first, the item tombstone last — an interrupted cascade
+   * stays retryable because the item is still visible.
+   */
   async deleteListItem(itemId: string): Promise<void> {
+    const item = this.entities.get(itemId) as ListItemEntity | undefined;
+    if (!item?.data || item.deleted) return;
+    const kind = item.data.kind;
+
+    if (kind === 'plant') {
+      for (const spot of this.liveSpots()) {
+        const h = spot.data.habitat;
+        const inTrees = h.hostTrees.some((t) => t.plantId === itemId);
+        const inSurrounding = h.surroundingPlantIds.includes(itemId);
+        if (!inTrees && !inSurrounding) continue;
+        await this.upsert('spot', spot.id, {
+          ...spot.data,
+          habitat: {
+            ...h,
+            // Remove the whole host-tree entry (incl. its age data).
+            hostTrees: h.hostTrees.filter((t) => t.plantId !== itemId),
+            surroundingPlantIds: h.surroundingPlantIds.filter((id) => id !== itemId)
+          }
+        });
+      }
+    } else if (kind === 'species') {
+      for (const spot of this.liveSpots()) {
+        if (spot.data.speciesId === itemId) await this.deleteSpot(spot.id);
+      }
+      // Fresh liveSpots() call: must not resurrect the spots just tombstoned.
+      for (const spot of this.liveSpots()) {
+        const h = spot.data.habitat;
+        if (!h.indicatorSpeciesIds.includes(itemId)) continue;
+        await this.upsert('spot', spot.id, {
+          ...spot.data,
+          habitat: { ...h, indicatorSpeciesIds: h.indicatorSpeciesIds.filter((id) => id !== itemId) }
+        });
+      }
+    } else {
+      // tag
+      for (const sp of this.listItems('species')) {
+        const tagIds = sp.data.tagIds ?? [];
+        if (!tagIds.includes(itemId)) continue;
+        await this.upsert('listItem', sp.id, { ...sp.data, tagIds: tagIds.filter((id) => id !== itemId) });
+      }
+    }
+
+    // Read the icon BEFORE tombstoning (tombstones keep data, but be safe).
+    const icon = item.data.iconPhotoId;
     await this.tombstone([itemId]);
+    if (icon) await this.removePhotos([icon]);
+  }
+
+  /**
+   * What deleteListItem would touch right now. Informational only — the
+   * delete itself recomputes against live data.
+   */
+  deleteImpact(itemId: string): { spotsDeleted: number; habitatEdits: number; speciesEdited: number } {
+    const impact = { spotsDeleted: 0, habitatEdits: 0, speciesEdited: 0 };
+    const item = this.entities.get(itemId) as ListItemEntity | undefined;
+    if (!item?.data || item.deleted) return impact;
+    if (item.data.kind === 'plant') {
+      for (const s of this.liveSpots()) {
+        const h = s.data.habitat;
+        if (h.hostTrees.some((t) => t.plantId === itemId) || h.surroundingPlantIds.includes(itemId)) {
+          impact.habitatEdits++;
+        }
+      }
+    } else if (item.data.kind === 'species') {
+      for (const s of this.liveSpots()) {
+        if (s.data.speciesId === itemId) impact.spotsDeleted++;
+        // Other spots referencing it as an indicator (not double-counted).
+        else if (s.data.habitat.indicatorSpeciesIds.includes(itemId)) impact.habitatEdits++;
+      }
+    } else {
+      impact.speciesEdited = this.listItems('species').filter((sp) => (sp.data.tagIds ?? []).includes(itemId)).length;
+    }
+    return impact;
   }
 
   itemName(id: string | null | undefined): string {

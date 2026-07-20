@@ -1,6 +1,5 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { page } from '$app/state';
   import Icon from '$lib/components/Icon.svelte';
   import MapView, { type ViewState } from '$lib/components/MapView.svelte';
   import RegionDownloadSheet from '$lib/components/RegionDownloadSheet.svelte';
@@ -11,25 +10,15 @@
   import { data } from '$lib/state/data.svelte';
   import { filter } from '$lib/state/filter.svelte';
   import { toasts } from '$lib/state/toasts.svelte';
-  import { mapPrefs } from '$lib/state/ui.svelte';
+  import { mapPrefs, mapSession } from '$lib/state/ui.svelte';
 
-  let follow = $state(true);
   let filterOpen = $state(false);
+  let tagFilterOpen = $state(false);
   let regionOpen = $state(false);
+  // Full ViewState (incl. bbox) stays local for RegionDownloadSheet; the
+  // camera part is mirrored into mapSession so it survives route remounts.
   let view = $state<ViewState | null>(null);
   let mapRef = $state<MapView | null>(null);
-
-  // "View on map" from a spot detail: /?focus=<spotId>
-  const focusSpot = $derived.by(() => {
-    const id = page.url.searchParams.get('focus');
-    return id ? data.getSpot(id) : undefined;
-  });
-  $effect(() => {
-    if (focusSpot && mapRef) {
-      follow = false;
-      mapRef.jumpTo(focusSpot.data.lat, focusSpot.data.lng, 16);
-    }
-  });
 
   const pins = $derived(
     data
@@ -44,11 +33,20 @@
       }))
   );
   const filterLabel = $derived(
-    filter.active
+    filter.speciesIds.length > 0
       ? filter.speciesIds.length === 1
         ? data.itemName(filter.speciesIds[0])
         : `${filter.speciesIds.length} species`
       : 'All species'
+  );
+  // Tag chip only exists once the user has created tags — zero UI cost before.
+  const hasTags = $derived(data.listItems('tag').length > 0);
+  const tagLabel = $derived(
+    filter.tagIds.length > 0
+      ? filter.tagIds.length === 1
+        ? data.itemName(filter.tagIds[0])
+        : `${filter.tagIds.length} tags`
+      : 'All tags'
   );
 </script>
 
@@ -59,20 +57,28 @@
     bind:this={mapRef}
     spots={pins}
     satellite={mapPrefs.satellite}
-    bind:follow
-    center={focusSpot ? { lat: focusSpot.data.lat, lng: focusSpot.data.lng, zoom: 16 } : null}
+    bind:follow={mapSession.follow}
+    center={mapSession.view}
     onTapSpot={(id) => void goto(`/spot/${id}`)}
-    onMove={(v) => (view = v)}
+    onMove={(v) => {
+      view = v;
+      mapSession.view = { lat: v.lat, lng: v.lng, zoom: v.zoom };
+    }}
   />
 
   <div class="top">
     <SyncChip />
-    <div class="filterwrap">
-      <button class="chip filter" class:active={filter.active} onclick={() => (filterOpen = true)}>
+    <div class="filterwrap" class:two={hasTags}>
+      <button class="chip filter" class:active={filter.speciesIds.length > 0} onclick={() => (filterOpen = true)}>
         🍄 {filterLabel}
       </button>
+      {#if hasTags}
+        <button class="chip filter" class:active={filter.tagIds.length > 0} onclick={() => (tagFilterOpen = true)}>
+          🏷 {tagLabel}
+        </button>
+      {/if}
       {#if filter.active}
-        <button class="chip clear" aria-label="Show all species" onclick={() => (filter.speciesIds = [])}>
+        <button class="chip clear" aria-label="Clear filters" onclick={() => filter.clear()}>
           <Icon name="x" size={16} />
         </button>
       {/if}
@@ -94,7 +100,7 @@
     </button>
     <button
       class="mapbtn"
-      class:on={follow}
+      class:on={mapSession.follow}
       class:dim={location.error !== null}
       aria-label="My location"
       onclick={() => {
@@ -133,6 +139,14 @@
   selected={filter.speciesIds}
   onDone={(ids) => (filter.speciesIds = ids)}
 />
+<Selector
+  bind:open={tagFilterOpen}
+  kind="tag"
+  title="Show tags"
+  multi
+  selected={filter.tagIds}
+  onDone={(ids) => (filter.tagIds = ids)}
+/>
 <RegionDownloadSheet bind:open={regionOpen} {view} satellite={mapPrefs.satellite} />
 
 <style>
@@ -163,6 +177,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Two chips + clear must still fit next to the sync chip on a phone. */
+  .filterwrap.two .chip.filter {
+    max-width: 38vw;
   }
   .stack {
     position: absolute;
@@ -214,6 +232,7 @@
     letter-spacing: 0.02em;
   }
   .mapbtn.on {
+    background: var(--accent-soft);
     color: var(--accent);
   }
   .mapbtn.dim {
@@ -251,7 +270,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 16px rgba(120, 40, 10, 0.5);
+    box-shadow: 0 4px 16px rgba(20, 30, 20, 0.5);
     text-decoration: none;
   }
   .fab:active {

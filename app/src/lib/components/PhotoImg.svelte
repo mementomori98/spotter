@@ -9,8 +9,17 @@
     photoId = null,
     hash = null,
     ext = null,
-    alt = 'Photo'
-  }: { photoId?: string | null; hash?: string | null; ext?: string | null; alt?: string } = $props();
+    alt = 'Photo',
+    fit = 'cover',
+    onLoad
+  }: {
+    photoId?: string | null;
+    hash?: string | null;
+    ext?: string | null;
+    alt?: string;
+    fit?: 'cover' | 'contain';
+    onLoad?: (img: HTMLImageElement) => void;
+  } = $props();
 
   let url = $state<string | null>(null);
   let loaded = $state(false);
@@ -44,7 +53,17 @@
 </script>
 
 {#if url}
-  <img src={url} {alt} loading="lazy" class:ready={loaded} onload={() => (loaded = true)} />
+  <img
+    src={url}
+    {alt}
+    loading="lazy"
+    class:ready={loaded}
+    class:contain={fit === 'contain'}
+    onload={(e) => {
+      loaded = true;
+      onLoad?.(e.currentTarget as HTMLImageElement);
+    }}
+  />
 {:else}
   <div class="placeholder" aria-label="Photo not downloaded yet">🍄</div>
 {/if}
@@ -65,6 +84,11 @@
   }
   img.ready {
     opacity: 1;
+  }
+  img.contain {
+    object-fit: contain;
+    border-radius: 0;
+    background: transparent; /* the green decode bg would paint letterbox bars */
   }
   .placeholder {
     display: flex;

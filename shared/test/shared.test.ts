@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareVersions,
   incomingWins,
+  ListItemDataSchema,
   nextUpdatedAt,
   SpotDataSchema,
   validateChangeData,
@@ -58,6 +59,16 @@ describe('schemas', () => {
       id: 'abcd1234', type: 'listItem', createdAt: 1, updatedAt: 1, updatedBy: 'd', deleted: false,
       data: { ...item, iconPhotoId: 'photo-uuid-1234' }
     }).ok).toBe(true);
+  });
+
+  it('accepts the tag vocabulary and species tag assignments', () => {
+    expect(ListItemDataSchema.safeParse({ kind: 'tag', name: 'edible', lastUsedAt: 0 }).success).toBe(true);
+    const tagged = ListItemDataSchema.parse({ kind: 'species', name: 'Cep', lastUsedAt: 0, tagIds: ['tag-uuid-0001'] });
+    expect(tagged.tagIds).toEqual(['tag-uuid-0001']);
+    // Legacy species payloads (pre-tags) must keep parsing — and tagIds must
+    // stay absent, not be defaulted (stored payloads are never re-parsed).
+    const legacy = ListItemDataSchema.parse({ kind: 'species', name: 'Old', lastUsedAt: 0 });
+    expect(legacy.tagIds).toBeUndefined();
   });
 
   it('accepts only the fixed rating scale', () => {

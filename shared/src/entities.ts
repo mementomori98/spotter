@@ -95,12 +95,13 @@ export const PhotoDataSchema = z.object({
 export type PhotoData = z.infer<typeof PhotoDataSchema>;
 
 /**
- * Selector vocabulary item. Two shared vocabularies (spots.md):
+ * Selector vocabulary item. Three shared vocabularies (spots.md):
  * - kind "species": mushroom species (species field + indicator mushrooms)
  * - kind "plant":   trees/plants (host trees + surrounding plants)
+ * - kind "tag":     user-defined labels attached to mushroom species
  */
 export const ListItemDataSchema = z.object({
-  kind: z.enum(['species', 'plant']),
+  kind: z.enum(['species', 'plant', 'tag']),
   name: z.string().min(1).max(200),
   /** Drives the "recent 5" section of selectors. */
   lastUsedAt: millis.default(0),
@@ -109,7 +110,14 @@ export const ListItemDataSchema = z.object({
    * image. Routed through a photo entity (not a bare hash) so the blob
    * syncs, exports and is GC-protected exactly like spot photos.
    */
-  iconPhotoId: uuid.optional()
+  iconPhotoId: uuid.optional(),
+  /**
+   * Tag listItem ids assigned to this item. Only meaningful on kind
+   * "species". Deliberately .optional() and NOT .default([]): stored
+   * payloads are never re-parsed, so a default would lie about the runtime
+   * shape of pre-existing records — readers must use `?? []`.
+   */
+  tagIds: z.array(uuid).optional()
 });
 export type ListItemData = z.infer<typeof ListItemDataSchema>;
 

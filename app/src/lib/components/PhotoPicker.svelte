@@ -4,6 +4,7 @@
   import { toasts } from '$lib/state/toasts.svelte';
   import Icon from './Icon.svelte';
   import PhotoImg from './PhotoImg.svelte';
+  import PhotoViewer from './PhotoViewer.svelte';
 
   /**
    * Camera + gallery capture. Files are hashed and persisted the moment
@@ -18,6 +19,7 @@
   let cameraInput = $state<HTMLInputElement | null>(null);
   let galleryInput = $state<HTMLInputElement | null>(null);
   let busy = $state(false);
+  let viewing = $state<DraftPhoto | null>(null);
 
   async function onFiles(list: FileList | null): Promise<void> {
     if (!list || list.length === 0) return;
@@ -55,7 +57,10 @@
     <div class="thumbs">
       {#each photos as photo (photo.hash)}
         <div class="thumb">
-          <PhotoImg hash={photo.hash} ext={photo.ext} alt={label} />
+          <!-- view + remove are siblings, not nested buttons; remove paints on top -->
+          <button type="button" class="view" aria-label="View photo" onclick={() => (viewing = photo)}>
+            <PhotoImg hash={photo.hash} ext={photo.ext} alt={label} />
+          </button>
           <button type="button" class="remove" aria-label="Remove photo" onclick={() => remove(photo.hash)}>
             <Icon name="x" size={18} />
           </button>
@@ -88,6 +93,10 @@
   />
 </div>
 
+{#if viewing}
+  <PhotoViewer hash={viewing.hash} ext={viewing.ext} onClose={() => (viewing = null)} />
+{/if}
+
 <style>
   .buttons {
     display: flex;
@@ -105,6 +114,15 @@
   .thumb {
     position: relative;
     aspect-ratio: 1;
+  }
+  .view {
+    padding: 0;
+    border: none;
+    background: none;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: pointer;
   }
   .remove {
     position: absolute;

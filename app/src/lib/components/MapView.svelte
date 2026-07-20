@@ -125,7 +125,24 @@
     });
     map.on('moveend', reportView);
 
+    // The user's hand beats any camera animation, instantly. Capture phase because
+    // MapLibre doesn't reliably cancel an in-flight easeTo on touch/wheel. stop() is
+    // gated on follow so it can never reset MapLibre's gesture handlers mid-gesture
+    // (the only programmatic animations in this app run only while follow is true).
+    const userGrab = () => {
+      if (follow) map?.stop();
+      follow = false;
+    };
+    const grabEl = container; // `container` may be nulled before cleanup runs
+    const grabEvents = ['pointerdown', 'touchstart', 'wheel'] as const;
+    for (const evt of grabEvents) {
+      grabEl.addEventListener(evt, userGrab, { capture: true, passive: true });
+    }
+
     return () => {
+      for (const evt of grabEvents) {
+        grabEl.removeEventListener(evt, userGrab, { capture: true });
+      }
       loaded = false;
       map?.remove();
       map = null;
@@ -215,8 +232,11 @@
       cone.style.display = location.heading === null ? 'none' : 'block';
       if (location.heading !== null) cone.style.transform = `rotate(${location.heading}deg)`;
     }
-    if (follow) {
-      map.easeTo({ center: [location.lng!, location.lat!], duration: 400 });
+    // follow is read untracked: when it flips true, locate() is already running
+    // its own ease (with a zoom bump) — tracking follow here would immediately
+    // supersede that. The effect still re-runs on every location change.
+    if (untrack(() => follow)) {
+      map.easeTo({ center: [location.lng!, location.lat!], duration: 250 });
     }
   });
 
@@ -234,7 +254,7 @@
   export function locate(): void {
     if (!map || !location.hasFix) return;
     follow = true;
-    map.easeTo({ center: [location.lng!, location.lat!], zoom: Math.max(map.getZoom(), 15) });
+    map.easeTo({ center: [location.lng!, location.lat!], zoom: Math.max(map.getZoom(), 15), duration: 275 });
   }
 
   export function jumpTo(lat: number, lng: number, zoom?: number): void {

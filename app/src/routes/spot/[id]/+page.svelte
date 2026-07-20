@@ -5,15 +5,15 @@
   import Icon from '$lib/components/Icon.svelte';
   import MapView from '$lib/components/MapView.svelte';
   import PhotoImg from '$lib/components/PhotoImg.svelte';
+  import PhotoViewer from '$lib/components/PhotoViewer.svelte';
   import VisitSheet from '$lib/components/VisitSheet.svelte';
   import { boot } from '$lib/state/boot.svelte';
   import { data } from '$lib/state/data.svelte';
   import { toasts } from '$lib/state/toasts.svelte';
-  import { mapPrefs } from '$lib/state/ui.svelte';
+  import { mapPrefs, mapSession } from '$lib/state/ui.svelte';
   import RatingPicker from '$lib/components/RatingPicker.svelte';
   import { newId } from '$lib/util/ids';
   import { fmtDate, fmtDateTime } from '$lib/util/format';
-  import { fade } from 'svelte/transition';
   import type { Rating, VisitEntity, VisitOutcome } from '@spots/shared';
 
   const spot = $derived(data.getSpot(page.params.id!));
@@ -161,7 +161,17 @@
     {/if}
 
     <h2>Location</h2>
-    <button class="minimap" onclick={() => void goto(`/?focus=${spot.id}`)} aria-label="Show on map">
+    <button
+      class="minimap"
+      onclick={() => {
+        // Session handoff, not a URL param: a param baked into the history
+        // entry would re-fire the jump on back-navigation.
+        mapSession.view = { lat: spot.data.lat, lng: spot.data.lng, zoom: 16 };
+        mapSession.follow = false;
+        void goto('/');
+      }}
+      aria-label="Show on map"
+    >
       <MapView
         interactive={false}
         showUser={false}
@@ -216,14 +226,7 @@
 {/if}
 
 {#if viewerPhotoId}
-  <button
-    class="viewer"
-    transition:fade={{ duration: 150 }}
-    onclick={() => (viewerPhotoId = null)}
-    aria-label="Close photo"
-  >
-    <PhotoImg photoId={viewerPhotoId} alt="Photo" />
-  </button>
+  <PhotoViewer photoId={viewerPhotoId} onClose={() => (viewerPhotoId = null)} />
 {/if}
 
 <ConfirmDialog
@@ -390,18 +393,5 @@
   }
   .actions .btn {
     flex: 1;
-  }
-  .viewer {
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    background: rgba(0, 0, 0, 0.92);
-    border: none;
-    padding: 0;
-    cursor: zoom-out;
-  }
-  .viewer :global(img) {
-    object-fit: contain;
-    border-radius: 0;
   }
 </style>
