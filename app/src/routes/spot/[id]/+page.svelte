@@ -13,6 +13,7 @@
   import RatingPicker from '$lib/components/RatingPicker.svelte';
   import { newId } from '$lib/util/ids';
   import { fmtDate, fmtDateTime } from '$lib/util/format';
+  import { fade } from 'svelte/transition';
   import type { Rating, VisitEntity, VisitOutcome } from '@spots/shared';
 
   const spot = $derived(data.getSpot(page.params.id!));
@@ -153,6 +154,7 @@
             {#if visit.data.photoIds.length > 0}
               <span class="v-thumb"><PhotoImg photoId={visit.data.photoIds[0]} alt="Visit photo" /></span>
             {/if}
+            <span class="v-edit" aria-hidden="true"><Icon name="edit" size={18} /></span>
           </button>
         {/each}
       </div>
@@ -185,6 +187,7 @@
           </p>
         {/if}
         {#if spot.data.habitat.soil}<p><strong>Soil:</strong> {spot.data.habitat.soil}</p>{/if}
+        {#if spot.data.habitat.ph !== undefined}<p><strong>pH:</strong> {spot.data.habitat.ph.toFixed(1)}</p>{/if}
         {#if spot.data.habitat.vegetation}<p><strong>Vegetation:</strong> {spot.data.habitat.vegetation}</p>{/if}
         {#if spot.data.habitat.surroundingPlantIds.length > 0}
           <p><strong>Plants nearby:</strong> {spot.data.habitat.surroundingPlantIds.map((id) => data.itemName(id)).join(', ')}</p>
@@ -213,7 +216,12 @@
 {/if}
 
 {#if viewerPhotoId}
-  <button class="viewer" onclick={() => (viewerPhotoId = null)} aria-label="Close photo">
+  <button
+    class="viewer"
+    transition:fade={{ duration: 150 }}
+    onclick={() => (viewerPhotoId = null)}
+    aria-label="Close photo"
+  >
     <PhotoImg photoId={viewerPhotoId} alt="Photo" />
   </button>
 {/if}
@@ -233,6 +241,7 @@
     return (
       h.hostTrees.length > 0 ||
       h.soil !== '' ||
+      h.ph !== undefined ||
       h.vegetation !== '' ||
       h.habitatNotes !== '' ||
       h.surroundingPlantIds.length > 0 ||
@@ -346,6 +355,11 @@
     width: 52px;
     height: 52px;
     flex-shrink: 0;
+  }
+  .v-edit {
+    color: var(--ink-soft);
+    flex-shrink: 0;
+    display: inline-flex;
   }
   .minimap {
     display: block;

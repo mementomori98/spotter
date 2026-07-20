@@ -170,17 +170,23 @@
   .row .name {
     flex: 1;
   }
+  .row {
+    transition: background-color 0.12s ease;
+  }
+  .row:active {
+    background: var(--accent-soft);
+  }
   .row.checked {
-    color: var(--green-dark);
+    color: var(--accent-dark);
     font-weight: 700;
   }
   .row.create {
-    color: var(--green-dark);
+    color: var(--accent-dark);
     font-weight: 700;
     justify-content: flex-start;
     gap: 10px;
     border-bottom: none;
-    background: var(--green-soft);
+    background: var(--accent-soft);
     border-radius: var(--radius);
     margin-bottom: 8px;
   }

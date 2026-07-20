@@ -69,6 +69,26 @@ export async function discardDraftPhotos(drafts: DraftPhoto[]): Promise<void> {
   }
 }
 
+/**
+ * Store a freshly cropped species icon as a photo entity (syncs + exports +
+ * GC-safe like any photo). Returns the photo entity id.
+ */
+export async function createIconPhoto(blob: Blob): Promise<string> {
+  const hash = await sha256Hex(blob);
+  const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+  await data.store.putBlob(hash, ext, blob);
+  // Always mint a FRESH photo entity — never reuse an existing one by hash.
+  // Icons are removed with removePhotos() when changed; a shared entity
+  // (another species' identical icon, or even a spot photo with the same
+  // bytes) would be tombstoned out from under its other referent. Blobs
+  // stay hash-deduped underneath, and dropOrphanBlobs keeps the file while
+  // any other live photo shares the hash.
+  const id = newId();
+  await data.upsert('photo', id, { hash, ext, size: blob.size, width: 128, height: 128 });
+  await data.queueUpload(hash, ext);
+  return id;
+}
+
 export async function getPhotoBlobById(photoId: string): Promise<Blob | undefined> {
   const photo = data.getPhoto(photoId);
   if (!photo) return undefined;

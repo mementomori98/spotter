@@ -6,11 +6,12 @@
   import RegionDownloadSheet from '$lib/components/RegionDownloadSheet.svelte';
   import Selector from '$lib/components/Selector.svelte';
   import SyncChip from '$lib/components/SyncChip.svelte';
+  import { location } from '$lib/geo/location.svelte';
   import { boot } from '$lib/state/boot.svelte';
   import { data } from '$lib/state/data.svelte';
   import { filter } from '$lib/state/filter.svelte';
+  import { toasts } from '$lib/state/toasts.svelte';
   import { mapPrefs } from '$lib/state/ui.svelte';
-  import { RATINGS, RATING_COLORS, RATING_SIZE, UNRATED_COLOR } from '$lib/util/rating';
 
   let follow = $state(true);
   let filterOpen = $state(false);
@@ -34,10 +35,14 @@
     data
       .liveSpots()
       .filter((s) => filter.matches(s.data.speciesId))
-      .map((s) => ({ id: s.id, lat: s.data.lat, lng: s.data.lng, rating: s.data.rating ?? null }))
+      .map((s) => ({
+        id: s.id,
+        lat: s.data.lat,
+        lng: s.data.lng,
+        rating: s.data.rating ?? null,
+        iconPhotoId: data.itemIconPhotoId(s.data.speciesId)
+      }))
   );
-  const anyRated = $derived(pins.some((p) => p.rating));
-
   const filterLabel = $derived(
     filter.active
       ? filter.speciesIds.length === 1
@@ -62,9 +67,16 @@
 
   <div class="top">
     <SyncChip />
-    <button class="chip filter" class:active={filter.active} onclick={() => (filterOpen = true)}>
-      🍄 {filterLabel}
-    </button>
+    <div class="filterwrap">
+      <button class="chip filter" class:active={filter.active} onclick={() => (filterOpen = true)}>
+        🍄 {filterLabel}
+      </button>
+      {#if filter.active}
+        <button class="chip clear" aria-label="Show all species" onclick={() => (filter.speciesIds = [])}>
+          <Icon name="x" size={16} />
+        </button>
+      {/if}
+    </div>
   </div>
 
   <div class="stack">
@@ -74,33 +86,35 @@
       onclick={() => mapPrefs.toggle()}
     >
       <Icon name={mapPrefs.satellite ? 'map' : 'globe'} />
+      <span class="cap">{mapPrefs.satellite ? 'Map' : 'Sat'}</span>
     </button>
     <button class="mapbtn" aria-label="Download this area for offline" onclick={() => (regionOpen = true)}>
       <Icon name="download" />
+      <span class="cap">Offline</span>
     </button>
-    <button class="mapbtn" class:on={follow} aria-label="My location" onclick={() => mapRef?.locate()}>
+    <button
+      class="mapbtn"
+      class:on={follow}
+      class:dim={location.error !== null}
+      aria-label="My location"
+      onclick={() => {
+        if (!location.hasFix) {
+          toasts.show(location.error ?? 'Waiting for GPS…', { kind: 'warn' });
+        } else {
+          mapRef?.locate();
+        }
+      }}
+    >
       <Icon name="crosshair" />
+      <span class="cap">Me</span>
     </button>
   </div>
 
-  {#if anyRated}
-    <!-- Rating legend: same colors/sizes as the pins (incl. unrated red). -->
-    <div class="legend" aria-label="Rating legend">
-      <span class="l-item" title="Not rated yet">
-        <span class="l-dot" style:background={UNRATED_COLOR} style:width="14px" style:height="14px"></span>
-        ?
-      </span>
-      {#each RATINGS as r (r)}
-        <span class="l-item">
-          <span
-            class="l-dot"
-            style:background={RATING_COLORS[r]}
-            style:width={`${8 + RATING_SIZE[r] * 6}px`}
-            style:height={`${8 + RATING_SIZE[r] * 6}px`}
-          ></span>
-          {r}
-        </span>
-      {/each}
+  {#if data.ready && data.liveSpots().length === 0}
+    <!-- First-run guidance: an empty satellite map explains nothing by itself. -->
+    <div class="coach card" role="note">
+      🍄 Found a mushroom? Tap <strong>+</strong> to save the spot.<br />
+      <span class="note">Works fully offline — everything syncs later.</span>
     </div>
   {/if}
 
@@ -159,48 +173,68 @@
     flex-direction: column;
     gap: 10px;
   }
+  .filterwrap {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+  }
+  .chip.clear {
+    box-shadow: var(--shadow);
+    border: none;
+    background: var(--card);
+    min-width: 40px;
+    justify-content: center;
+    flex-shrink: 0;
+  }
   /* Solid opaque backgrounds — readable in direct sunlight. */
   .mapbtn {
     width: var(--tap);
-    height: var(--tap);
+    height: 62px;
     border-radius: 16px;
     border: none;
     background: var(--card);
     color: var(--ink);
     box-shadow: var(--shadow);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 1px;
     cursor: pointer;
+    transition: transform 0.06s ease;
   }
-  .mapbtn.on {
-    color: #1a73e8;
+  .mapbtn:active {
+    transform: scale(0.95);
   }
-  .legend {
-    position: absolute;
-    left: 10px;
-    bottom: 112px; /* above the FAB band, clear of attribution & side stack */
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--card);
-    border-radius: 999px;
-    padding: 5px 10px;
-    box-shadow: var(--shadow);
-    font-size: 11px;
+  .mapbtn .cap {
+    font-size: 10px;
     font-weight: 800;
     color: var(--ink-soft);
+    letter-spacing: 0.02em;
   }
-  .l-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+  .mapbtn.on {
+    color: var(--accent);
   }
-  .l-dot {
-    border-radius: 50%;
-    border: 1.5px solid #fff;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+  .mapbtn.dim {
+    opacity: 0.55;
+  }
+  .coach {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 112px;
+    z-index: 10;
+    width: max-content;
+    max-width: 84vw;
+    padding: 12px 18px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .coach .note {
+    font-weight: 400;
   }
   .fab {
     position: absolute;
@@ -211,12 +245,13 @@
     width: 72px;
     height: 72px;
     border-radius: 50%;
-    background: var(--green);
+    background: var(--accent);
+    border: 3px solid #fff; /* white ring pops on any terrain */
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 16px rgba(27, 94, 32, 0.45);
+    box-shadow: 0 4px 16px rgba(120, 40, 10, 0.5);
     text-decoration: none;
   }
   .fab:active {

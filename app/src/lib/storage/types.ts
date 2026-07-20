@@ -44,6 +44,8 @@ export interface SpotDraft {
   rating: Rating | null;
   notes: string;
   soil: string;
+  /** Soil pH 3.0–9.0, null = not measured. */
+  ph: number | null;
   vegetation: string;
   habitatNotes: string;
   hostTrees: { plantId: string; ageMin?: number; ageMax?: number }[];

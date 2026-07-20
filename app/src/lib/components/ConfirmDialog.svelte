@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fade, fly } from 'svelte/transition';
+
   let {
     open = $bindable(false),
     title,
@@ -14,23 +16,43 @@
     danger?: boolean;
     onConfirm: () => void;
   } = $props();
+
+  const reduced =
+    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  $effect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  });
 </script>
 
 {#if open}
-  <div class="backdrop" role="presentation"></div>
-  <div class="dialog card" role="alertdialog" aria-modal="true" aria-label={title}>
-    <h2>{title}</h2>
-    {#if message}<p>{message}</p>{/if}
-    <div class="actions">
-      <button class="btn secondary" onclick={() => (open = false)}>Cancel</button>
-      <button
-        class="btn"
-        class:danger
-        onclick={() => {
-          open = false;
-          onConfirm();
-        }}>{confirmLabel}</button
-      >
+  <div class="backdrop" transition:fade={{ duration: reduced ? 0 : 120 }} role="presentation"></div>
+  <div class="center-layer">
+    <div
+      class="dialog card"
+      transition:fly={{ y: 14, duration: reduced ? 0 : 160 }}
+      role="alertdialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <h2>{title}</h2>
+      {#if message}<p>{message}</p>{/if}
+      <div class="actions">
+        <button class="btn secondary" onclick={() => (open = false)}>Cancel</button>
+        <button
+          class="btn"
+          class:danger
+          onclick={() => {
+            open = false;
+            onConfirm();
+          }}>{confirmLabel}</button
+        >
+      </div>
     </div>
   </div>
 {/if}
@@ -42,15 +64,21 @@
     z-index: 70;
     background: rgba(10, 20, 12, 0.45);
   }
-  .dialog {
+  /* Centering wrapper: the card itself carries no transform, so Svelte's
+     fly transition can animate it without fighting a translateY(-50%). */
+  .center-layer {
     position: fixed;
+    inset: 0;
     z-index: 71;
-    left: 24px;
-    right: 24px;
-    top: 50%;
-    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    pointer-events: none;
+  }
+  .dialog {
+    pointer-events: auto;
+    width: 100%;
     max-width: 420px;
-    margin: 0 auto;
     padding: 20px;
   }
   .dialog p {

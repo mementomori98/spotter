@@ -36,6 +36,7 @@
       rating: spot?.data.rating ?? null,
       notes: spot?.data.notes ?? '',
       soil: spot?.data.habitat.soil ?? '',
+      ph: spot?.data.habitat.ph ?? null,
       vegetation: spot?.data.habitat.vegetation ?? '',
       habitatNotes: spot?.data.habitat.habitatNotes ?? '',
       hostTrees: spot ? spot.data.habitat.hostTrees.map((t) => ({ ...t })) : [],
@@ -55,6 +56,7 @@
         : [],
       habitatOpen: editing
         ? spot!.data.habitat.hostTrees.length > 0 ||
+          spot!.data.habitat.ph !== undefined ||
           spot!.data.habitat.soil !== '' ||
           spot!.data.habitat.vegetation !== '' ||
           spot!.data.habitat.habitatNotes !== '' ||
@@ -71,6 +73,7 @@
       d.speciesId ||
         d.rating ||
         d.notes ||
+        d.ph !== null ||
         d.soil ||
         d.vegetation ||
         d.habitatNotes ||
@@ -104,7 +107,13 @@
     data
       .liveSpots()
       .filter((s) => s.id !== spot?.id)
-      .map((s) => ({ id: s.id, lat: s.data.lat, lng: s.data.lng, rating: s.data.rating ?? null }))
+      .map((s) => ({
+        id: s.id,
+        lat: s.data.lat,
+        lng: s.data.lng,
+        rating: s.data.rating ?? null,
+        iconPhotoId: data.itemIconPhotoId(s.data.speciesId)
+      }))
   );
 
   // Restore a persisted draft (the camera app may have killed the PWA).
@@ -214,6 +223,7 @@
         habitat: {
           hostTrees: draft.hostTrees,
           soil: draft.soil,
+          ...(draft.ph !== null ? { ph: Math.round(draft.ph * 10) / 10 } : {}),
           vegetation: draft.vegetation,
           surroundingPlantIds: draft.surroundingPlantIds,
           indicatorSpeciesIds: draft.indicatorSpeciesIds,
@@ -328,7 +338,7 @@
   </div>
 
   <div class="field">
-    <span class="label">Rating — how good is this spot?</span>
+    <span class="label">Rating</span>
     <RatingPicker value={draft.rating} onChange={(r) => (draft.rating = r)} />
   </div>
 
@@ -405,6 +415,32 @@
     </div>
 
     <div class="field">
+      <span class="label">Soil pH</span>
+      {#if draft.ph === null}
+        <button class="btn secondary wide" onclick={() => (draft.ph = 6)}>
+          <Icon name="plus" size={20} /> Add pH
+        </button>
+      {:else}
+        <div class="phrow">
+          <span class="phval">{draft.ph.toFixed(1)}</span>
+          <input
+            type="range"
+            min="3"
+            max="9"
+            step="0.1"
+            value={draft.ph}
+            oninput={(e) => (draft.ph = Math.round(+e.currentTarget.value * 10) / 10)}
+            aria-label="Soil pH"
+          />
+          <button class="iconbtn" aria-label="Clear pH" onclick={() => (draft.ph = null)}>
+            <Icon name="x" size={20} />
+          </button>
+        </div>
+        <div class="phscale note"><span>3 acidic</span><span>7</span><span>9 alkaline</span></div>
+      {/if}
+    </div>
+
+    <div class="field">
       <span class="label">Vegetation</span>
       <input class="input" maxlength="1000" bind:value={draft.vegetation} placeholder="e.g. old beech forest, mossy…" />
     </div>
@@ -451,7 +487,17 @@
   {/if}
 
   <div class="savebar">
-    <button class="btn" onclick={() => void save()} disabled={!canSave || saving || boot.readOnly}>
+    <!-- Never a dead button: tapping while incomplete jumps to the missing field. -->
+    <button
+      class="btn"
+      class:muted={!canSave}
+      disabled={saving || boot.readOnly}
+      onclick={() => {
+        if (!draft.speciesId) speciesOpen = true;
+        else if (!hasLocation) locating = true;
+        else void save();
+      }}
+    >
       {saving ? 'Saving…' : saveHint ?? (editing ? 'Save changes' : 'Save spot')}
     </button>
   </div>
@@ -677,5 +723,27 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .phrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .phval {
+    font-size: 22px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    min-width: 52px;
+    color: var(--green-dark);
+  }
+  .phrow input[type='range'] {
+    flex: 1;
+    accent-color: var(--accent);
+    min-height: 48px;
+  }
+  .phscale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: -4px;
   }
 </style>

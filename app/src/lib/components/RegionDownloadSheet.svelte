@@ -96,13 +96,13 @@
 <style>
   input[type='range'] {
     width: 100%;
-    accent-color: var(--green);
+    accent-color: var(--accent);
     min-height: 44px;
   }
   progress {
     width: 100%;
     height: 12px;
-    accent-color: var(--green);
+    accent-color: var(--accent);
   }
   .estimate {
     font-weight: 700;

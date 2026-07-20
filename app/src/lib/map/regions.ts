@@ -56,7 +56,11 @@ export async function downloadRegion(
   onProgress: (done: number, total: number) => void,
   signal: AbortSignal
 ): Promise<OfflineRegion | null> {
-  const { ranges, count } = estimateRegion(opts.bbox, opts.zMin, opts.zMax, opts.layer);
+  // The bbox often arrives as a Svelte $state proxy — IndexedDB's structured
+  // clone rejects proxies ("[object Array] could not be cloned"). Snapshot
+  // to a plain array before it goes anywhere near storage.
+  const bbox: [number, number, number, number] = [opts.bbox[0], opts.bbox[1], opts.bbox[2], opts.bbox[3]];
+  const { ranges, count } = estimateRegion(bbox, opts.zMin, opts.zMax, opts.layer);
   const id = newId();
   const cache = await caches.open(`tiles-region-${id}`);
   let done = 0;
@@ -124,7 +128,7 @@ export async function downloadRegion(
     id,
     name: opts.name,
     createdAt: Date.now(),
-    bbox: opts.bbox,
+    bbox,
     zMin: opts.zMin,
     zMax: opts.zMax,
     layer: opts.layer,

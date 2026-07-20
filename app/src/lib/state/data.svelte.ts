@@ -319,6 +319,15 @@ class DataState {
     const e = this.entities.get(id) as ListItemEntity | undefined;
     return e?.data?.name ?? '';
   }
+
+  /** Species icon (photo entity id), if one is set and still live. */
+  itemIconPhotoId(id: string | null | undefined): string | null {
+    if (!id) return null;
+    const e = this.entities.get(id) as ListItemEntity | undefined;
+    if (!e || e.type !== 'listItem' || e.deleted || !e.data) return null;
+    const photoId = e.data.iconPhotoId ?? null;
+    return photoId && this.getPhoto(photoId) ? photoId : null;
+  }
 }
 
 export const data = new DataState();

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto, onNavigate } from '$app/navigation';
   import { page } from '$app/state';
   import '../app.css';
   import BottomNav from '$lib/components/BottomNav.svelte';
@@ -16,6 +16,18 @@
     void boot.boot();
     void sweepExportTemp();
     registerServiceWorker();
+  });
+
+  // Cross-fade between pages (View Transitions API; graceful no-op elsewhere).
+  onNavigate((navigation) => {
+    if (!document.startViewTransition) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    return new Promise((resolve) => {
+      document.startViewTransition(async () => {
+        resolve();
+        await navigation.complete;
+      });
+    });
   });
 
   // Route guard: no session -> /login; session -> keep out of /login.
@@ -102,7 +114,7 @@
     width: 44px;
     height: 44px;
     border: 4px solid var(--green-soft);
-    border-top-color: var(--green);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: rot 0.9s linear infinite;
   }

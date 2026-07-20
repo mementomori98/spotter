@@ -5,8 +5,10 @@
     id: string;
     lat: number;
     lng: number;
-    /** Spot quality — drives pin color and size (gold + biggest = best). */
+    /** Spot quality — colors the dot and is shown as a tiny badge under the pin. */
     rating?: Rating | null;
+    /** Species icon (photo entity id) — replaces the colored dot when set. */
+    iconPhotoId?: string | null;
   }
 
   export interface ViewState {
@@ -19,9 +21,18 @@
 
 <script lang="ts">
   import { location } from '$lib/geo/location.svelte';
-  import { spotPinLayers, SPOT_TAP_LAYERS, SPOTS_SOURCE_ID } from '$lib/map/pins';
+  import {
+    dotKey,
+    makeDotMarker,
+    makeIconMarker,
+    markerKey,
+    MARKER_PIXEL_RATIO
+  } from '$lib/map/markers';
+  import { spotMarkerLayer, SPOT_TAP_LAYERS, SPOTS_SOURCE_ID } from '$lib/map/pins';
   import { buildStyle } from '$lib/map/style';
+  import { getPhotoBlobById } from '$lib/photos/photos';
   import { boot } from '$lib/state/boot.svelte';
+  import { RATINGS } from '$lib/util/rating';
   import { untrack } from 'svelte';
   import { GeoJSONSource, Map as MlMap, Marker } from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
@@ -82,24 +93,29 @@
 
     map.on('load', () => {
       loaded = true;
+      registered = new Set();
       map!.addSource(SPOTS_SOURCE_ID, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
-      // Circles instead of symbols: no glyph server needed => fully offline.
-      // Layer specs live in lib/map/pins.ts and are validated against the
-      // MapLibre style spec by a unit test (an invalid expression here
-      // throws and silently kills ALL pins — happened once, never again).
-      for (const layer of spotPinLayers) map!.addLayer(layer);
-      // Single click handler across both pin layers — per-layer handlers
-      // would fire twice when a tap hits the dot AND its halo.
+      // Pre-register every dot marker (5 ratings + unrated) so features can
+      // always fall back to a dot even before icons finish loading.
+      for (const rating of [null, ...RATINGS]) {
+        const key = dotKey(rating);
+        map!.addImage(key, makeDotMarker(rating), { pixelRatio: MARKER_PIXEL_RATIO });
+        registered.add(key);
+      }
+      // Single symbol layer; marker bitmaps carry icon + rating badge.
+      // Spec validated by pins.test.ts (an invalid layer throws in addLayer
+      // and silently kills ALL pins — happened once, never again).
+      map!.addLayer(spotMarkerLayer);
       map!.on('click', (e) => {
         const feature = map!.queryRenderedFeatures(e.point, { layers: SPOT_TAP_LAYERS })[0];
         const id = feature?.properties?.id as string | undefined;
         if (id) onTapSpot(id);
       });
-      map!.on('mouseenter', 'spots-dot', () => (map!.getCanvas().style.cursor = 'pointer'));
-      map!.on('mouseleave', 'spots-dot', () => (map!.getCanvas().style.cursor = ''));
+      map!.on('mouseenter', spotMarkerLayer.id, () => (map!.getCanvas().style.cursor = 'pointer'));
+      map!.on('mouseleave', spotMarkerLayer.id, () => (map!.getCanvas().style.cursor = ''));
       reportView();
     });
 
@@ -137,19 +153,50 @@
     map.setLayoutProperty('sat', 'visibility', satellite ? 'visible' : 'none');
   });
 
-  // Spot pins.
+  // Spot pins: resolve marker bitmaps (species icons lazily, dots eagerly),
+  // then push features. A token guards against out-of-order async updates.
+  let registered = new Set<string>();
+  let syncToken = 0;
+
   $effect(() => {
+    const list = spots.map((s) => ({ ...s })); // tracks the prop
     if (!map || !loaded) return;
-    const source = map.getSource<GeoJSONSource>(SPOTS_SOURCE_ID);
-    source?.setData({
-      type: 'FeatureCollection',
-      features: spots.map((s) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-        properties: { id: s.id, rating: s.rating ?? '' }
-      }))
-    });
+    const token = ++syncToken;
+    void syncMarkers(list, token);
   });
+
+  async function syncMarkers(list: SpotPin[], token: number): Promise<void> {
+    const features = [];
+    for (const s of list) {
+      if (token !== syncToken) return; // superseded — stop loading blobs
+      let key = dotKey(s.rating ?? null);
+      if (s.iconPhotoId) {
+        const iconMarker = markerKey(s.iconPhotoId, s.rating ?? null);
+        if (!registered.has(iconMarker)) {
+          try {
+            const blob = await getPhotoBlobById(s.iconPhotoId);
+            if (blob && map) {
+              const img = await makeIconMarker(blob, s.rating ?? null);
+              if (!map.hasImage(iconMarker)) {
+                map.addImage(iconMarker, img, { pixelRatio: MARKER_PIXEL_RATIO });
+              }
+              registered.add(iconMarker);
+            }
+          } catch {
+            /* icon blob unavailable — dot fallback below */
+          }
+        }
+        if (registered.has(iconMarker)) key = iconMarker;
+      }
+      features.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+        properties: { id: s.id, marker: key }
+      });
+    }
+    if (token !== syncToken || !map || !loaded) return; // superseded / torn down
+    map.getSource<GeoJSONSource>(SPOTS_SOURCE_ID)?.setData({ type: 'FeatureCollection', features });
+  }
 
   // User position + heading cone (like Google Maps).
   $effect(() => {

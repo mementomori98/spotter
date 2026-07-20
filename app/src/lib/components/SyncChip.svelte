@@ -1,5 +1,6 @@
 <script lang="ts">
   import { session } from '$lib/state/session.svelte';
+  import { toasts } from '$lib/state/toasts.svelte';
   import { engine, type SyncStatus } from '$lib/sync/engine.svelte';
   import Icon from './Icon.svelte';
 
@@ -36,6 +37,9 @@
     if ((engine.status as SyncStatus) === 'conflict') {
       newName = session.current?.username ?? '';
       conflictOpen = true;
+    } else if ((engine.status as SyncStatus) === 'idle' && engine.pendingCount === 0) {
+      // Manual sync deserves visible confirmation, even when there was nothing to do.
+      toasts.show('Up to date.');
     }
   }
 

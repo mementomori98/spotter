@@ -34,11 +34,21 @@
     </button>
   {/each}
 </div>
+{#if value}
+  <p class="hint">{RATING_HINTS[value]} · tap again to clear</p>
+{:else if !compact}
+  <p class="hint">How good is this spot?</p>
+{/if}
 
 <style>
   .rating {
     display: flex;
     gap: 8px;
+  }
+  .hint {
+    margin: 6px 2px 0;
+    font-size: 13px;
+    color: var(--ink-soft);
   }
   button {
     flex: 1;

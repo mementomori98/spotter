@@ -54,6 +54,11 @@
     <button class="chip" class:active={filter.active} onclick={() => (filterOpen = true)}>
       🍄 {filterLabel}
     </button>
+    {#if filter.active}
+      <button class="chip" aria-label="Show all species" onclick={() => (filter.speciesIds = [])}>
+        <Icon name="x" size={16} />
+      </button>
+    {/if}
   </div>
 
   {#if entries.length === 0}
@@ -125,6 +130,10 @@
     margin-bottom: 12px;
     text-decoration: none;
     color: inherit;
+    transition: transform 0.06s ease;
+  }
+  .entry:active {
+    transform: scale(0.99);
   }
   .thumb {
     width: 72px;

@@ -1,10 +1,19 @@
 <script lang="ts">
   import { toasts } from '$lib/state/toasts.svelte';
+  import { flip } from 'svelte/animate';
+  import { fly } from 'svelte/transition';
+
+  const reduced =
+    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 </script>
 
 <div class="toasts" aria-live="polite">
   {#each toasts.list as toast (toast.id)}
-    <div class="toast {toast.kind}">
+    <div
+      class="toast {toast.kind}"
+      transition:fly={{ y: 16, duration: reduced ? 0 : 180 }}
+      animate:flip={{ duration: reduced ? 0 : 150 }}
+    >
       <span>{toast.message}</span>
       {#each toast.actions ?? [] as action (action.label)}
         <button

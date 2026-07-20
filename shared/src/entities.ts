@@ -28,6 +28,8 @@ export const HabitatSchema = z.object({
   hostTrees: z.array(HostTreeSchema).default([]),
   soil: z.string().max(1000).default(''),
   vegetation: z.string().max(1000).default(''),
+  /** Soil pH, 3.0–9.0 in 0.1 steps. */
+  ph: z.number().min(3).max(9).optional(),
   surroundingPlantIds: z.array(uuid).default([]),
   indicatorSpeciesIds: z.array(uuid).default([]),
   habitatNotes: z.string().max(5000).default('')
@@ -101,7 +103,13 @@ export const ListItemDataSchema = z.object({
   kind: z.enum(['species', 'plant']),
   name: z.string().min(1).max(200),
   /** Drives the "recent 5" section of selectors. */
-  lastUsedAt: millis.default(0)
+  lastUsedAt: millis.default(0),
+  /**
+   * Optional icon (species): id of a photo ENTITY holding the small cropped
+   * image. Routed through a photo entity (not a bare hash) so the blob
+   * syncs, exports and is GC-protected exactly like spot photos.
+   */
+  iconPhotoId: uuid.optional()
 });
 export type ListItemData = z.infer<typeof ListItemDataSchema>;
 

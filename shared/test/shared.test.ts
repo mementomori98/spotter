@@ -45,6 +45,21 @@ describe('schemas', () => {
     expect(parsed.rating).toBeUndefined();
   });
 
+  it('validates pH range and species icons', () => {
+    const base = { lat: 1, lng: 2, foundAt: 3, speciesId: 'abcd1234' };
+    const withPh = (ph: number) => ({ ...base, habitat: { ph } });
+    expect(SpotDataSchema.safeParse(withPh(4.5)).success).toBe(true);
+    expect(SpotDataSchema.safeParse(withPh(2.9)).success).toBe(false);
+    expect(SpotDataSchema.safeParse(withPh(9.1)).success).toBe(false);
+    expect(SpotDataSchema.parse(base).habitat.ph).toBeUndefined();
+
+    const item = { kind: 'species', name: 'Cep', lastUsedAt: 0 };
+    expect(validateChangeData({
+      id: 'abcd1234', type: 'listItem', createdAt: 1, updatedAt: 1, updatedBy: 'd', deleted: false,
+      data: { ...item, iconPhotoId: 'photo-uuid-1234' }
+    }).ok).toBe(true);
+  });
+
   it('accepts only the fixed rating scale', () => {
     const base = { lat: 1, lng: 2, foundAt: 3, speciesId: 'abcd1234' };
     for (const rating of ['--', '-', '+', '++', '+++']) {

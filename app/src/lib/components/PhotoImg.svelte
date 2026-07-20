@@ -13,6 +13,7 @@
   }: { photoId?: string | null; hash?: string | null; ext?: string | null; alt?: string } = $props();
 
   let url = $state<string | null>(null);
+  let loaded = $state(false);
 
   $effect(() => {
     let cancelled = false;
@@ -43,7 +44,7 @@
 </script>
 
 {#if url}
-  <img src={url} {alt} loading="lazy" />
+  <img src={url} {alt} loading="lazy" class:ready={loaded} onload={() => (loaded = true)} />
 {:else}
   <div class="placeholder" aria-label="Photo not downloaded yet">🍄</div>
 {/if}
@@ -56,6 +57,14 @@
     object-fit: cover;
     border-radius: 10px;
     display: block;
+  }
+  img {
+    background: var(--green-soft); /* colored while decoding */
+    opacity: 0;
+    transition: opacity 0.18s ease;
+  }
+  img.ready {
+    opacity: 1;
   }
   .placeholder {
     display: flex;

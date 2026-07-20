@@ -1,23 +1,44 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
 
   let {
     open = $bindable(false),
     title = '',
     children
   }: { open: boolean; title?: string; children: Snippet } = $props();
+
+  const reduced =
+    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // The page behind an open sheet must not scroll along with touch drags.
+  $effect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  });
 </script>
 
 {#if open}
   <div
     class="backdrop"
+    transition:fade={{ duration: reduced ? 0 : 150 }}
     onclick={() => (open = false)}
     onkeydown={(e) => e.key === 'Escape' && (open = false)}
     role="button"
     tabindex="-1"
     aria-label="Close"
   ></div>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label={title}>
+  <div
+    class="sheet"
+    transition:fly={{ y: 320, duration: reduced ? 0 : 220 }}
+    role="dialog"
+    aria-modal="true"
+    aria-label={title}
+  >
     <div class="grab"></div>
     {#if title}<h2>{title}</h2>{/if}
     {@render children()}
